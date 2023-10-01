@@ -1,0 +1,291 @@
+---
+title: Regressão
+author: Rafael N. Magalhães
+date: "18 de abril, 2019"
+output:
+  html_document:
+    df_print: paged
+    code_folding: show
+    collapsed: no
+    theme: spacelab
+    toc: yes
+    toc_float: yes
+editor_options: 
+  chunk_output_type: inline
+---
+
+
+
+# Revisão dos conceitos básicos
+Vimos na semana passada os conceitos de **associação**, **correlação** e **causalidade**, assim como vimos que a **regressão** é um tipo de análise que permite verificar a associação entre dois fenômenos mantendo constantes as variáveis de controle. Relembrando:
+
+## Associação
+Dizemos que duas variáveis estão associadas quando elas **variam conjuntamente**, tanto faz se na mesma direção ou em direções diferentes. Quando não há variação em uma das variáveis, não conseguimos, do ponto de vista estatistico, avaliar se há associaçao. **Variação é informação!**
+
+$$
+cov(x, y) = \sum_{i=1}^{n}\frac{(x_{i} - \bar{x}) * (y_{i} - \bar{y})}{N}
+$$
+
+## Correlação
+O coeficiente **r de Pearson** é uma medida específica de associação, a mais conhecida entre diversas outras. É uma medida de covariância padronizada, de modo que os valores sempre são restritos entre -1 e 1. Esse coeficiente é linear por construção, e vai tentar traçar uma reta mesmo que a nuvem de dados tenha um formato não linear.
+
+$$
+r = \sum_{i=1}^{n} \frac{cov(x,y)}{\sigma_{x}\sigma_{y}}
+$$
+
+Quando encontramos associação entre duas variáveis, não conseguimos distinguir se:
+
+- $X$ influencia $Y$
+- $Y$ influencia $X$
+- $X$ e $Y$ se influenciam mutuamente
+- $Z$ influencia $X$ e $Y$ (variável omitida)
+
+## Correlação e causalidade
+Para concluir que
+
+$$X \longrightarrow Y$$
+
+precisamos estabelecer três condições:
+
+- **Ordem temporal**: $Y$ não pode acontecer antes de $X$. É a condição de mais fácil verificação.
+- **Associação**: $X$ e $Y$ devem variar mutuamente. Avaliada com as ferramentas que vimos até agora no curso.
+- <span class="red">**Eliminação de alternativas**</span>: todas as outras explicações plausíveis para $Y$ são descartadas. É a condição mais difícil de verificar.
+
+# Afinal, o que significa "modelar" os dados?
+Vamos começar com uma premissa bastante simples: para modelar, precisamos explicitar quais são as condições sob as quais uma variável $X$ se relaciona com uma variável $Y$. Para fins de nomenclatura, vamos começar a dar nomes específicos para essas variáveis:
+
+- **Variável Dependente (VD)**: é o nosso fenômeno de interesse, usualmente denotada como $Y$
+- **Variável Independente (VI)**: é o fenômeno que explica nossa variável dependente, que geralmente denotada como $X$
+
+Matematicamente, vamos modelar $Y$ como uma *função* de $X$. Estatisticamente, a modelagem geralmente pode servir para dois objetivos principais:
+
+1. **Predição**: usada para investigar a possibilidade de usar os valores de $X$ para prever o valor de $Y$. Não precisa haver uma conexão substantiva entre essas duas variáveis, contanto que uma sirva para gerar previsões confiáveis sobre os valores de outra. 
+2. **Explicação**: usada para entender a conexão e a significância (substantiva e estatística) da relação entre duas variáveis. Neste caso, queremos estimar com precisão o impacto de uma variável sobre a outra, de preferência excluindo as possíveis variáveis omitidas.
+
+
+## Modelo linear
+O modelo OLS permite verificar a associação entre dois fenômenos mantendo constantes outras explicações possíveis, que chamamos de variáveis de controle. Trata-se de um **modelo linear**, mas veremos como flexibilizar essa suposição logo mais. Por enquanto, cabe lembrar que a forma funcional da regressão nada mais é do que uma equação:
+
+$$y = \beta{_0} + \beta{_1} x{_1} + \ldots + \beta{_k} x{_k} + \epsilon$$
+
+Nessa equação, os valores de $y$ e de $x_{1} \ldots x{_k}$ são conhecidos, e os valores de $\beta_{0} \ldots \beta_{k}$ são as incógnitas. Quando temos apenas uma variável independente, podemos estimar o valor de $\beta$ de maneira simples:
+
+$$\hat{\beta} = \frac{\sum_{i=1}^{n}(x_{i} - \bar{x})(y_{i} - \bar{y})}{\sum_{i=1}^{n}(x_{i} - \bar{x})^{2}}$$
+
+Geralmente, porém, temos um conjunto de variáveis independentes, com muito mais incógnitas. Nesses casos, precisamos resolver um sistema de equações:
+
+$$\boldsymbol{\hat{\beta}} = (X^{\prime}X)^{-1}X^{\prime}y$$
+
+Vamos voltar ao banco de dados do TSE que utilizamos na semana passada para explorar um pouco mais as possibilidades da análise de regressão, assim como suas limitações.
+
+
+
+# Base de dados - Eleições 2018
+
+## Observações iniciais
+
+Vamos fazer dois tipos de análise: uma que considera os fatores que fazem com que um candidato tenha **mais votos**, e outra que se concentra nos fatores que fazem com que um candidato sela **eleito**. São dois fenômenos similares, mas uma diferença pequena na natureza dessas variáveis vai ter consequências relevantes na modelagem.
+
+Vamos levar em consideração apenas as variáveis que já existem no ou que podem ser calculadas diretamente com o banco de dados do TSE. Uma análise mais completa envolveria a coleta de mais variáveis e/ou maior reflexão sobre o desenho da análise, mas nosso objetivo aqui é fazer um exercício sobre as possibilidades da análise de regressão.
+
+## Carregando e transformando a base de dados
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(cepespR)
+
+# Identificar deputados eleitos em 2014, para saber quem são os incumbentes em 2018
+eleitos_2014 <- get_elections(year = 2014,
+                              position = "Deputado Federal", 
+                              regional_aggregation = "Estado",
+                              political_aggregation = "Candidato") %>% 
+  mutate(RESULTADO = case_when(DESC_SIT_TOT_TURNO == "ELEITO POR QP" | DESC_SIT_TOT_TURNO == "ELEITO POR MEDIA" ~ "Eleito",
+                               TRUE ~ "Não Eleito")) %>% 
+  filter(RESULTADO == "Eleito") %>% 
+  select(CPF_CANDIDATO)
+
+# Carregar candidaturas de 2018 e criar novas variáveis
+candidatos_2018 <- get_elections(year = 2018,
+                                 position = "Deputado Federal", 
+                                 regional_aggregation = "Estado",
+                                 political_aggregation = "Candidato") %>% 
+  # Selecionar apenas candidaturas homologadas
+  filter(DES_SITUACAO_CANDIDATURA == "APTO") %>% 
+  # Criar variáveis de Incumbência e Resultado
+  mutate(INCUMBENTE = case_when(CPF_CANDIDATO %in% eleitos_2014$CPF_CANDIDATO ~ "Sim", 
+                               TRUE ~ "Não"),
+         RESULTADO = case_when(DESC_SIT_TOT_TURNO == "ELEITO POR QP" | DESC_SIT_TOT_TURNO == "ELEITO POR MEDIA" ~ "Eleito", 
+                               TRUE ~ "Não Eleito"),
+         VEREADOR = case_when(DESCRICAO_OCUPACAO == "VEREADOR" ~ "Sim",
+                               TRUE ~ "Não"),
+         EMPRESARIO = case_when(DESCRICAO_OCUPACAO == "EMPRESÁRIO" ~ "Sim",
+                               TRUE ~ "Não"),
+         E_SUPERIOR = case_when(DESCRICAO_GRAU_INSTRUCAO == "SUPERIOR COMPLETO" ~ "Sim",
+                               TRUE ~ "Não"),
+         RACA = case_when(DESCRICAO_COR_RACA == "BRANCA" ~ "Branco",
+                              TRUE ~ "Não branco")) %>% 
+  # Deixar no banco apenas as variáveis que nos interessam
+  select(c("UF", 
+           "INCUMBENTE", 
+           "NOME_URNA_CANDIDATO", 
+           "SIGLA_PARTIDO", 
+           "DES_SITUACAO_CANDIDATURA", 
+           "DESCRICAO_OCUPACAO", 
+           "IDADE_DATA_ELEICAO", 
+           "DESCRICAO_SEXO", 
+           "DESCRICAO_GRAU_INSTRUCAO", 
+           "DESCRICAO_ESTADO_CIVIL", 
+           "DESCRICAO_COR_RACA", 
+           "DESC_SIT_TOT_TURNO",
+           "VEREADOR",
+           "EMPRESARIO",
+           "E_SUPERIOR",
+           "RACA",
+           "RESULTADO", 
+           "QTDE_VOTOS")) %>% 
+    # Calcular o percentual de votos de cada candidato
+    group_by(UF) %>% 
+    mutate(VOTOS_VALIDOS = sum(QTDE_VOTOS)) %>% 
+    ungroup() %>% 
+    mutate(VOTOS_PERC = QTDE_VOTOS/VOTOS_VALIDOS*100)
+```
+
+## Categorias de referência
+Vamos definir as categorias de referência de cada variável, de modo que todas as estimativas que obtivermos sejam comparações substantivamente interessantes. 
+
+Esse passo não é obrigatório, e a categoria de referência é uma escolha arbitrária do analista, de acordo com o julgamento que se faz sobre qual é a quantidade de interesse mais relevante.
+
+```{r}
+candidatos_2018 <- candidatos_2018 %>% 
+  mutate(INCUMBENTE = relevel(factor(INCUMBENTE), ref = "Não"),
+         DESCRICAO_ESTADO_CIVIL = relevel(factor(DESCRICAO_ESTADO_CIVIL), ref = "SOLTEIRO(A)"),
+         DESCRICAO_SEXO = relevel(factor(DESCRICAO_SEXO), ref = "MASCULINO"),
+         DESCRICAO_COR_RACA = relevel(factor(DESCRICAO_COR_RACA), ref = "BRANCA"),
+         VEREADOR = relevel(factor(VEREADOR), ref = "Não"),
+         EMPRESARIO = relevel(factor(EMPRESARIO), ref = "Não"),
+         E_SUPERIOR = relevel(factor(E_SUPERIOR), ref = "Não"),
+         RESULTADO = relevel(factor(RESULTADO), ref = "Não Eleito"),
+         RACA = relevel(factor(RACA), ref = "Branco"))
+```
+
+## Base final
+```{r echo=FALSE, rows.print=15}
+candidatos_2018
+```
+
+# Análises OLS
+
+## Modelo bivariado
+Vamos começar com um modelo linear bivariado, estimando o efeito de ser mulher sobre a quantidade de votos da candidata. Portanto, estimaremos o seguinte modelo:
+
+$$\widehat{votos} = \beta{_0} + \beta{_1} sexo + \epsilon$$
+
+```{r message=FALSE, warning=FALSE}
+library(moderndive)
+
+m_biv <- lm(QTDE_VOTOS ~ DESCRICAO_SEXO, data = candidatos_2018)
+get_regression_table(m_biv)
+```
+
+Lembre-se que o terceiro critério para avaliar causalidade é a eliminação de todas as explicações alternativas, mas nesse modelo *não estamos controlando por mais nada*. Podemos dar passos na direção certa incluindo mais controles em um **modelo multivariado**.
+
+*Nota: Uma controle simples que já poderíamos utilizar mesmo em uma regressão bivariada é considerar a população. Obviamente, estados mais populosos terão mais votos, o que pode fazer com que a simples contagem dos números absolutos não tenha muito sentido. Daqui para a frente, vamos utilizar o **percentual de votos** como variável dependente*
+
+```{r}
+summary(candidatos_2018$VOTOS_PERC)
+```
+
+
+## Modelo multivariado
+Vamos tratar agora de um modelo mais interessante:
+
+$$\widehat{votos} = \beta{_0} + \beta{_1} sexo + \beta{_2} raca + \epsilon$$
+
+```{r message=FALSE, warning=FALSE}
+m_mult <- lm(VOTOS_PERC ~ DESCRICAO_SEXO + RACA, data = candidatos_2018)
+get_regression_table(m_mult)
+```
+
+Com mais variáveis, fica mais interessante visualizar os resultados:
+
+```{r message=FALSE, warning=FALSE}
+# install.packages("dotwhisker")
+library(dotwhisker)
+
+m_mult %>% dwplot() +
+  geom_vline(xintercept = 0, colour = "grey60", linetype = 2) +
+  theme_classic() +
+  theme(legend.position = "none")
+```
+
+## Interações
+
+Vimos que mulheres ganham menos votos, assim como negros. Para avaliar o impacto para as mulheres negras, fazemos uma interação entre as variáveis, estimando o seguinte modelo:
+
+$$\widehat{votos} = \beta{_0} + \beta{_1} sexo + \beta{_2} raca + \beta{_3}sexo* raca + \epsilon$$
+
+
+```{r message=FALSE, warning=FALSE}
+m_int <- lm(VOTOS_PERC ~ DESCRICAO_SEXO + RACA + DESCRICAO_SEXO:RACA, 
+            data = candidatos_2018)
+get_regression_table(m_int)
+```
+
+Termos interativos tornam a interpretação um pouco mais difícil, então vamos passo-a-passo:
+
+- **Homens brancos** terão, em média, $0,45\%$ dos votos ($\beta_{0}$)
+
+- **Homens negros** terão, em média $0,45 - 0,092 = 0,36\%$ dos votos ($\beta_{0} + \beta_{2}$)
+
+- **Mulheres brancas** terão, em média, $0,45 - 0,209 = 0,24\%$ dos votos ($\beta_{0} + \beta_{1}$)
+
+- **Mulheres negras** terão, em média, $0,45 - 0,092 - 0,209 - 0,006 = 0,14\%$ dos votos ($\beta_{0} + \beta_{1} + \beta_{2} + \beta_{3}$)
+
+Note que o efeito da interação, em si, não é significativo (por quê?)
+
+```{r message=FALSE, warning=FALSE}
+m_int %>% dwplot() +
+  geom_vline(xintercept = 0, colour = "grey60", linetype = 2) +
+  theme_classic() +
+  theme(legend.position = "none")
+```
+
+## Modelo completo
+Agora, temos as ferramentas para interpretar um modelo mais completo:
+
+```{r message=FALSE, warning=FALSE}
+m_compl <- lm(VOTOS_PERC ~ DESCRICAO_SEXO + RACA + DESCRICAO_SEXO:RACA + DESCRICAO_ESTADO_CIVIL + VEREADOR + EMPRESARIO + E_SUPERIOR + factor(UF), 
+            data = candidatos_2018)
+get_regression_table(m_compl)
+```
+
+
+
+```{r message=FALSE, warning=FALSE}
+m_compl %>% dwplot() +
+  geom_vline(xintercept = 0, colour = "grey60", linetype = 2) +
+  theme_classic() +
+  theme(legend.position = "none")
+```
+
+# Modelo Logit
+
+Modelos logit são utilizados para variáveis dependentes binárias. Esse é o caso, por exemplo, da variável `RESULTADOS`, cujos resultados são *Eleito* ou *Não Eleito*. 
+
+É uma mudança pequena, mas a forma funcional do modelo é completamente diferente da do modelo OLS. A probabilidade de que $Y = 1$ é dada por:
+
+$$\frac{1}{1 + e^{-(\beta{_0} + \beta{_1} x{_1} + \ldots + \beta{_k} x{_k})}} $$
+
+## Estimação
+
+```{r message=FALSE, warning=FALSE}
+m_logit <- glm(RESULTADO ~ DESCRICAO_SEXO + RACA + DESCRICAO_SEXO:RACA + DESCRICAO_ESTADO_CIVIL + VEREADOR + EMPRESARIO + E_SUPERIOR + factor(UF), 
+            data = candidatos_2018,
+            family = "binomial")
+get_regression_table(m_compl)
+```
+
+## Interpretação
+A interpretação de modelos logit é mais complicada do que a do modelo linear, envolvendo conceitos que ainda não vimos (como *log odds* e razão de chance). Por enquanto, vamos ficar com uma regrinha que aproxima bem os resultados.
+
+A regra da **divisão por 4** nos diz que, se dividirmos o coeficiente de uma regressão logit por 4, teremos uma aproximação da probabilidade de que $Y = 1$. Exexmplo: o coeficiente da variável `E_SUPERIOR` é 0,24; portanto, ter ensino superior aumenta a probabilidade de um candidato ser eleito em $6\%$

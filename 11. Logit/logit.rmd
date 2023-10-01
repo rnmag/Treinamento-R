@@ -1,0 +1,770 @@
+---
+title: Modelo Logit
+author: Rafael N. Magalhães
+date: "26 de abril, 2019"
+output:
+  html_document:
+    df_print: paged
+    code_folding: show
+    collapsed: no
+    theme: spacelab
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+---
+
+# Revisão {.tabset .tabset-fade .tabset-pills}
+Na semana passada, vimos como usar a regressão linear para verificar a associação entre dois fenômenos *controlando* por algumas covariáveis. Discutimos também sob quais condições (e com quais limites) podemos dizer que uma variável impacta outra.
+
+No modelo linear que estudamos, a variável dependente era contínua: o percentual de votos de um candidato a deputado federal na eleição de 2018. Nosso sistema eleitoral, porém, não elege simplesmente os deputados com mais votos em cada estado. Se queremos entender o que faz um candidato ter sucesso na eleição, pode ser mais útil olhar para o seu **resultado**: eleito ou não eleito?
+
+Trata-se de uma variável **binária** (às vezes também chamada de **dummy**): ela só pode assumir dois valores. Parece ser uma mudança pequena, mas, pelo fato de estarmos mexendo na variável dependente, a forma funcional do modelo muda bastante. Veja a diferença em dois modelos simples:
+
+## Quando a VD é contínua
+
+$$y = \beta{_0} + \beta{_1} x{_1} + \epsilon$$
+
+```{r OLS, echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+library(tidyverse)
+library(Cairo)
+set.seed(1234)
+
+bd_lm <- tibble(x = rnorm(500, 5, 5),
+                y = 5 + 3 * x + rnorm(500, 0, 10))
+
+ggplot(bd_lm, aes(x, y)) + 
+  geom_point(alpha = .5) +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  theme_classic() +
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank())
+
+```
+
+## Quando a VD é binária
+
+
+$$ln \left(\frac{p}{1 - p}\right)= \beta{_0} + \beta{_1} x{_1} +  \epsilon$$
+
+```{r Logit, echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+bd_logit <- tibble(x = rnorm(500, 0, 5),
+                   z = 3 + 5 * x + rnorm(500, 0, 10),
+                   pr = 1/(1 + exp(-z)),
+                   y = rbinom(500, 1, pr))
+
+ggplot(bd_logit, aes(x, y)) + 
+  geom_point(alpha = .5) +
+  geom_smooth(method = "glm", 
+              method.args = list(family = "binomial"), 
+              color = "red",
+              se = FALSE) +
+  theme_classic() +
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank())
+
+```
+
+*Obs: a princípio, também é possível aplicar o modelo linear a variáveis dependentes binárias. Chamamos essa abordagem de **modelo linear de probabilidade** (LPM, na sigla em inglês). Existem diversos debates entre os econometristas sobre as vantagens e desvantagens de cada abordagem, mas não vamos entrar nessa discussão. Nos concentraremos no modelo logit por ser o mais usado, e por ter sido essa a escolha do paper que vamos replicar. Por esses mesmos motivos, não entrarei em detalhes sobre outros modelos para variáveis dependentes binárias, como o *probit*.*
+
+# Aspectos teóricos
+
+## Hipóteses
+
+O [trabalho que vamos replicar](http://www.scielo.br/scielo.php?script=sci_arttext&pid=S1981-38212014000100002) busca entender a associação entre o financiamento de campanha e as chances de sucesso eleitoral dos candidatos a deputado federal e estadual nas eleições de 2010. Os dados estão disponíveis no [repositório da *Brazilian Political Science Review*](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/HZPCZ2) e podem ser acessados gratuitamente, sem necessidade de registro.
+
+Mais precisamente, os autores buscam medir como o financiamento de campanha *interage* com o gênero e o capital político dos candidatos. Assim, os autores testam 3 hipóteses:
+
+$H_1:$ o financiamento de campanha tem uma associação positiva e estatisticamente significativa com a performance eleitoral;
+
+$H_2$: financiamento de campanha é mais importante para *challengers* do que para os candidatos que já possuem o cargo;
+
+$H_3$: financiamento de campanha é mais importante para as mulheres do que para os homens.
+
+## Variável dependente
+O trabalho calcula uma variável de **sucesso eleitoral** que não corresponde exatamente à quantidade de votos do candidato nem ao fato de ele ter sido ou não eleito. Os autores justificam essa forma de medir a variável dependente pelo fato de que a simples contagem de votos não ser suficiente, no sistema eleitoral brasileiro, para definir se um candidato será de fato eleito. 
+
+Paralelamente, simplesmente considerar se o candidato foi ou não eleito seria insuficiente pelo fato de que alguns deputados são eleitos pelos votos da coligação, mesmo que tenham ganhado poucos votos diretamente. Assim, os autores argumentam que a ideia de "sucesso eleitoral" seria melhor capturada por uma mistura entre os candidatos que foram efetivamente eleitos e  aqueles que tiveram o maior número de votos em seu distrito.
+
+Podemos (e devemos) refletir se essa justificativa se sustenta, mas esse não é objetivo deste exercício. Caso você tenha curiosidade, mostrarei abaixo a associação entre a variável construída pelos autores e a medida oficial do TSE.
+
+
+## Modelo
+
+Os autores testam suas hipóteses por meio do seguinte modelo:
+$$ln \left(\frac{p(sucesso)}{1 - p(sucesso)}\right) = \beta{_0} + \overbrace{\beta{_1} financ}^{H_{1}} + \beta{_2} incumb + \beta{_3} gen + \overbrace{\beta{_4} financ*incumb}^{H_{2}} + \overbrace{\beta{_5} financ*gen}^{H_{3}}$$ 
+$$+ \beta{_6} incumb*gen + \beta{_7} financ*incumb*gen + \epsilon$$
+Note que a variável dependente nesse modelo não é, simplesmente, uma coluna na base de dados. Nós calculamos a chance (*odds*) de o evento acontecer com a fórmula $p/1-p$, e tiramos o log natural desse valor. Portanto, os coeficientes de uma regressão logit são exibidos, por padrão, em **log odds**. Os detalhes matemáticos sobre isso estão fora do escopo do curso, e iremos fazer a interpretação dos coeficientes em termos de outra medida: a **razão de chance** (odds ratio).
+
+
+# Análise Exploratória
+## Banco de dados {.tabset .tabset-fade .tabset-pills}
+```{r Base, message=FALSE, warning=FALSE}
+library(tidyverse)
+
+# carregar base de dados
+load("Banco_dados_Speck_Mancuso.RData")
+
+# dar rótulos aos valores para facilitar a leitura
+x <- x %>% 
+    mutate(MOSTVOTEDCANDIDATES = factor(case_when(MOSTVOTEDCANDIDATES == 1 ~ "Sim",
+                                                  TRUE                     ~ "Não")),
+           ELECTED = factor(case_when(ELECTED == 1 ~ "Sim",
+                                      TRUE         ~ "Não")),
+           WOMAN = factor(case_when(WOMAN == 1 ~ "Sim",
+                                    TRUE       ~ "Não")),
+           INCUMBENT = factor(case_when(INCUMBENT == 1 ~ "Sim",
+                                                  TRUE ~ "Não")))
+
+
+# Separar  as bases de dados de acordo com o cargo em disputa
+bd_federal <- x %>% 
+  filter(OFFICE == "FEDERAL DEPUTY")
+
+bd_estadual <- x %>% 
+  filter(OFFICE == "ESTATE DEPUTY")
+```
+
+### Deputado Federal
+```{r echo=FALSE}
+bd_federal
+```
+
+### Deputado Estadual
+```{r echo=FALSE}
+bd_estadual
+```
+
+## Codificação da VD {.tabset .tabset-fade .tabset-pills}
+
+Com as bases separadas, podemos ver a relação entre a variável de sucesso eleitoral criada pelos autores e a variável oficial do TSE:
+
+### Deputado Federal
+
+```{r message=FALSE, warning=FALSE, results='asis'}
+library(knitr) # pacote para formatar as tabelas
+
+table(bd_federal$MOSTVOTEDCANDIDATES, bd_federal$ELECTED) %>% 
+  kable(format = "markdown", 
+        col.names = c("Não Eleitos", "Eleitos"))
+```
+
+### Deputado Estadual
+
+```{r message=FALSE, warning=FALSE, results='asis'}
+library(knitr) # pacote para formatar as tabelas
+
+table(bd_estadual$MOSTVOTEDCANDIDATES, bd_estadual$ELECTED) %>% 
+  kable(format = "markdown", 
+        col.names = c("Não Eleitos", "Eleitos"))
+```
+
+Nas eleições de 2010 tivemos, portanto, 140 deputados estaduais e 51 deputados federais que não foram eleitos apesar de estarem entre os mais votados em seus distritos.
+
+
+## Finanças e Sucesso Eleitoral {.tabset .tabset-fade .tabset-pills}
+
+A distribuição de fundos de campanha entre candidatos bem-sucedidos e os demais é tão assimétrica que distorce completamente os gráficos. Isso já nos diz algo sobre a relação entre essas duas variáveis.
+
+### Deputado Federal
+
+```{r message=FALSE, warning=FALSE, dev='CairoPNG'}
+ggplot(bd_federal) +
+  geom_density(aes(x = PCTCAMPAIGNFUND, fill = factor(MOSTVOTEDCANDIDATES)),
+               alpha = .8) +
+  theme_classic() +
+  theme(legend.position = "top") +
+  labs(fill = "Sucesso eleitoral",
+       y = element_blank(),
+       x = "Arrecadação % em relação ao distrito")
+
+```
+
+### Deputado Estadual
+
+```{r message=FALSE, warning=FALSE, dev='CairoPNG'}
+ggplot(bd_estadual) +
+  geom_density(aes(x = PCTCAMPAIGNFUND, fill = factor(MOSTVOTEDCANDIDATES)),
+               alpha = .8) +
+  theme_classic() +
+  theme(legend.position = "top") +
+  labs(fill = "Sucesso eleitoral",
+       y = element_blank(),
+       x = "Arrecadação % em relação ao distrito")
+
+```
+
+## Gênero e Sucesso Eleitoral {.tabset .tabset-fade .tabset-pills}
+Os gráficos abaixo são chamados de *mosaic plots*, e mostram a associação entre duas variáveis categóricas. O tamanho de cada quadrado indica o número de observações em cada combinação possível (por exemplo, o maior quadrado é o de homens que não foram eleitos).
+
+Os mosaicos abaixo também dão uma medida de associação entre as duas variáveis. O Resíduo Padronizado Ajustado é uma medida crua de associação e não vamos dar muita atenção a ela, mas serve como um primeiro passo. Por enquanto, basta saber que costuma-se interpretar valores mais extremos do que $|2|$ como indicadores de associação entre as variáveis (por exemplo, existe uma associação negativa entre ser mulher e ser eleita).
+
+### Deputado Federal
+
+```{r message=FALSE, warning=FALSE, dev='CairoPNG'}
+table(bd_federal$WOMAN, bd_federal$MOSTVOTEDCANDIDATES) %>% 
+  mosaicplot(shade = TRUE,
+             main = "Gênero e Sucesso Eleitoral",
+             xlab = "Mulher",
+             ylab = "Sucesso Eleitoral",
+             off = 5)
+```
+
+### Deputado Estadual
+
+```{r message=FALSE, warning=FALSE, dev='CairoPNG'}
+table(bd_estadual$WOMAN, bd_estadual$MOSTVOTEDCANDIDATES) %>% 
+  mosaicplot(shade = TRUE,
+             main = "Gênero e Sucesso Eleitoral",
+             xlab = "Mulher",
+             ylab = "Sucesso Eleitoral",
+             off = 5)
+```
+
+## Incumbência e Sucesso Eleitoral {.tabset .tabset-fade .tabset-pills}
+Os mosaicos abaixo seguem a mesma lógica, mas agora destacando a relação entre a incumbência de um candidato e seu sucesso eleitoral
+
+### Deputado Federal
+
+```{r message=FALSE, warning=FALSE, dev='CairoPNG'}
+table(bd_federal$INCUMBENT, bd_federal$MOSTVOTEDCANDIDATES) %>% 
+  mosaicplot(shade = TRUE,
+             main = "Incumbência e Sucesso Eleitoral",
+             xlab = "Incumbente",
+             ylab = "Sucesso Eleitoral",
+             off = 5)
+```
+
+### Deputado Estadual
+
+```{r message=FALSE, warning=FALSE, dev='CairoPNG'}
+table(bd_estadual$INCUMBENT, bd_estadual$MOSTVOTEDCANDIDATES) %>% 
+  mosaicplot(shade = TRUE,
+             main = "Incumbência e Sucesso Eleitoral",
+             xlab = "Incumbente",
+             ylab = "Sucesso Eleitoral",
+             off = 5)
+```
+
+
+# Modelos
+
+Vamos tentar reproduzir os resultados da **Tabela 7**, que traz os resultados de todos os modelos que os autores rodaram. Todos os modelos têm a mesma funcional mencionada acima, com 2 colunas dedicadas à eleição estadual e mais 2 dedicadas à eleição federal. Além disso, a tabela tem 4 paineis para diferentes grupos de referência:
+
+- Painel 7a: Mulher e Incumbente
+- Painel 7b: Mulher e *Challenger*
+- Painel 7c: Homem e *Challenger*
+- Painel 7d: Homem e Incumbente
+
+
+## 7A: mulheres incumbentes {.tabset .tabset-fade .tabset-pills}
+
+### Log odds
+
+```{r message=FALSE, warning=FALSE, results='asis'}
+# Comandos iniciais
+library(stargazer) # formata tabela de regressão
+
+rotulos <- c("Financiamento", "Incumbente", "Gênero", "Financiamento:Incumbente", "Financiamento:Gênero", "Incumbente:Gênero", "Financiamento:Incumbente:Gênero")
+
+
+## 7A) Grupo de referência: mulheres incumbentes
+# Deputado federal ----------------------------
+bd_federal <- bd_federal %>% 
+    mutate(INCUMBENT = relevel(factor(INCUMBENT), "Sim"),
+           WOMAN = relevel(factor(WOMAN), "Sim"))
+           
+
+m7a_fed <- glm(MOSTVOTEDCANDIDATES ~ 
+                   PCTCAMPAIGNFUND + 
+                   INCUMBENT + 
+                   WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT +
+                   PCTCAMPAIGNFUND:WOMAN +
+                   INCUMBENT:WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT:WOMAN, 
+          data = bd_federal, 
+          family = "binomial")
+
+# Deputado estadual ----------------------------
+bd_estadual <- bd_estadual %>% 
+    mutate(INCUMBENT = relevel(factor(INCUMBENT), "Sim"),
+           WOMAN = relevel(factor(WOMAN), "Sim"))
+           
+
+m7a_est <- glm(MOSTVOTEDCANDIDATES ~ 
+                   PCTCAMPAIGNFUND + 
+                   INCUMBENT + 
+                   WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT +
+                   PCTCAMPAIGNFUND:WOMAN +
+                   INCUMBENT:WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT:WOMAN, 
+          data = bd_estadual, 
+          family = "binomial")
+
+
+stargazer(m7a_est,
+          m7a_fed,
+          title = "Modelo 7a", covariate.labels = rotulos,
+          dep.var.labels = "Sucesso Eleitoral:", dep.var.caption = "",
+          model.numbers = FALSE, report = "vc*",
+          column.labels = c("Estadual", "Federal"),
+          type = "html")
+
+
+```
+
+### Odds Ratio
+
+```{r message=FALSE, warning=FALSE, results='asis'}
+## 7A) Grupo de referência: mulheres incumbentes
+# Deputado federal ----------------------------
+bd_federal <- bd_federal %>% 
+    mutate(INCUMBENT = relevel(factor(INCUMBENT), "Sim"),
+           WOMAN = relevel(factor(WOMAN), "Sim"))
+           
+
+m7a_fed <- glm(MOSTVOTEDCANDIDATES ~ 
+                   PCTCAMPAIGNFUND + 
+                   INCUMBENT + 
+                   WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT +
+                   PCTCAMPAIGNFUND:WOMAN +
+                   INCUMBENT:WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT:WOMAN, 
+          data = bd_federal, 
+          family = "binomial")
+
+# Deputado estadual ----------------------------
+bd_estadual <- bd_estadual %>% 
+    mutate(INCUMBENT = relevel(factor(INCUMBENT), "Sim"),
+           WOMAN = relevel(factor(WOMAN), "Sim"))
+           
+
+m7a_est <- glm(MOSTVOTEDCANDIDATES ~ 
+                   PCTCAMPAIGNFUND + 
+                   INCUMBENT + 
+                   WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT +
+                   PCTCAMPAIGNFUND:WOMAN +
+                   INCUMBENT:WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT:WOMAN, 
+          data = bd_estadual, 
+          family = "binomial")
+
+
+stargazer(m7a_est,
+          m7a_fed,
+          title = "Modelo 7a", covariate.labels = rotulos,
+          dep.var.labels = "Sucesso Eleitoral:", dep.var.caption = "",
+          model.numbers = FALSE, report = "vc*",
+          column.labels = c("Estadual", "Federal"),
+          apply.coef = exp, t.auto = F, p.auto = F, 
+          type = "html")
+
+
+```
+
+
+## 7B: mulheres challengers {.tabset .tabset-fade .tabset-pills}
+
+### Log odds
+
+```{r message=FALSE, warning=FALSE, results='asis'}
+## 7B) Grupo de referência: mulheres challengers
+# Deputado federal ----------------------------
+bd_federal <- bd_federal %>% 
+    mutate(INCUMBENT = relevel(factor(INCUMBENT), "Não"),
+           WOMAN = relevel(factor(WOMAN), "Sim"))
+           
+
+m7b_fed <- glm(MOSTVOTEDCANDIDATES ~ 
+                   PCTCAMPAIGNFUND + 
+                   INCUMBENT + 
+                   WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT +
+                   PCTCAMPAIGNFUND:WOMAN +
+                   INCUMBENT:WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT:WOMAN, 
+          data = bd_federal, 
+          family = "binomial")
+
+# Deputado estadual ----------------------------
+bd_estadual <- bd_estadual %>% 
+    mutate(INCUMBENT = relevel(factor(INCUMBENT), "Não"),
+           WOMAN = relevel(factor(WOMAN), "Sim"))
+           
+
+m7b_est <- glm(MOSTVOTEDCANDIDATES ~ 
+                   PCTCAMPAIGNFUND + 
+                   INCUMBENT + 
+                   WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT +
+                   PCTCAMPAIGNFUND:WOMAN +
+                   INCUMBENT:WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT:WOMAN, 
+          data = bd_estadual, 
+          family = "binomial")
+
+
+stargazer(m7b_est,
+          m7b_fed,
+          title = "Modelo 7b", covariate.labels = rotulos,
+          dep.var.labels = "Sucesso Eleitoral:", dep.var.caption = "",
+          model.numbers = FALSE, report = "vc*",
+          column.labels = c("Estadual", "Federal"),
+          type = "html")
+
+
+```
+
+### Odds Ratio
+
+```{r message=FALSE, warning=FALSE, results='asis'}
+## 7B) Grupo de referência: mulheres challengers
+# Deputado federal ----------------------------
+bd_federal <- bd_federal %>% 
+    mutate(INCUMBENT = relevel(factor(INCUMBENT), "Não"),
+           WOMAN = relevel(factor(WOMAN), "Sim"))
+           
+
+m7b_fed <- glm(MOSTVOTEDCANDIDATES ~ 
+                   PCTCAMPAIGNFUND + 
+                   INCUMBENT + 
+                   WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT +
+                   PCTCAMPAIGNFUND:WOMAN +
+                   INCUMBENT:WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT:WOMAN, 
+          data = bd_federal, 
+          family = "binomial")
+
+# Deputado estadual ----------------------------
+bd_estadual <- bd_estadual %>% 
+    mutate(INCUMBENT = relevel(factor(INCUMBENT), "Não"),
+           WOMAN = relevel(factor(WOMAN), "Sim"))
+           
+
+m7b_est <- glm(MOSTVOTEDCANDIDATES ~ 
+                   PCTCAMPAIGNFUND + 
+                   INCUMBENT + 
+                   WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT +
+                   PCTCAMPAIGNFUND:WOMAN +
+                   INCUMBENT:WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT:WOMAN, 
+          data = bd_estadual, 
+          family = "binomial")
+
+
+stargazer(m7b_est,
+          m7b_fed,
+          title = "Modelo 7b", covariate.labels = rotulos,
+          dep.var.labels = "Sucesso Eleitoral:", dep.var.caption = "",
+          model.numbers = FALSE, report = "vc*",
+          column.labels = c("Estadual", "Federal"),
+          apply.coef = exp, t.auto = F, p.auto = F, 
+          type = "html")
+
+
+```
+
+## 7C: homens challengers {.tabset .tabset-fade .tabset-pills}
+
+### Log odds
+
+```{r message=FALSE, warning=FALSE, results='asis'}
+## 7C) Grupo de referência: homens challengers
+# Deputado federal ----------------------------
+bd_federal <- bd_federal %>% 
+    mutate(INCUMBENT = relevel(factor(INCUMBENT), "Não"),
+           WOMAN = relevel(factor(WOMAN), "Não"))
+           
+
+m7c_fed <- glm(MOSTVOTEDCANDIDATES ~ 
+                   PCTCAMPAIGNFUND + 
+                   INCUMBENT + 
+                   WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT +
+                   PCTCAMPAIGNFUND:WOMAN +
+                   INCUMBENT:WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT:WOMAN, 
+          data = bd_federal, 
+          family = "binomial")
+
+# Deputado estadual ----------------------------
+bd_estadual <- bd_estadual %>% 
+    mutate(INCUMBENT = relevel(factor(INCUMBENT), "Não"),
+           WOMAN = relevel(factor(WOMAN), "Não"))
+           
+
+m7c_est <- glm(MOSTVOTEDCANDIDATES ~ 
+                   PCTCAMPAIGNFUND + 
+                   INCUMBENT + 
+                   WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT +
+                   PCTCAMPAIGNFUND:WOMAN +
+                   INCUMBENT:WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT:WOMAN, 
+          data = bd_estadual, 
+          family = "binomial")
+
+
+stargazer(m7c_est,
+          m7c_fed,
+          title = "Modelo 7c", covariate.labels = rotulos,
+          dep.var.labels = "Sucesso Eleitoral:", dep.var.caption = "",
+          model.numbers = FALSE, report = "vc*",
+          column.labels = c("Estadual", "Federal"),
+          type = "html")
+
+
+```
+
+### Odds Ratio
+
+```{r message=FALSE, warning=FALSE, results='asis'}
+## 7C) Grupo de referência: homens challengers
+# Deputado federal ----------------------------
+bd_federal <- bd_federal %>% 
+    mutate(INCUMBENT = relevel(factor(INCUMBENT), "Não"),
+           WOMAN = relevel(factor(WOMAN), "Não"))
+           
+
+m7c_fed <- glm(MOSTVOTEDCANDIDATES ~ 
+                   PCTCAMPAIGNFUND + 
+                   INCUMBENT + 
+                   WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT +
+                   PCTCAMPAIGNFUND:WOMAN +
+                   INCUMBENT:WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT:WOMAN, 
+          data = bd_federal, 
+          family = "binomial")
+
+# Deputado estadual ----------------------------
+bd_estadual <- bd_estadual %>% 
+    mutate(INCUMBENT = relevel(factor(INCUMBENT), "Não"),
+           WOMAN = relevel(factor(WOMAN), "Não"))
+           
+
+m7c_est <- glm(MOSTVOTEDCANDIDATES ~ 
+                   PCTCAMPAIGNFUND + 
+                   INCUMBENT + 
+                   WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT +
+                   PCTCAMPAIGNFUND:WOMAN +
+                   INCUMBENT:WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT:WOMAN, 
+          data = bd_estadual, 
+          family = "binomial")
+
+
+stargazer(m7c_est,
+          m7c_fed,
+          title = "Modelo 7c", covariate.labels = rotulos,
+          dep.var.labels = "Sucesso Eleitoral:", dep.var.caption = "",
+          model.numbers = FALSE, report = "vc*",
+          column.labels = c("Estadual", "Federal"),
+          apply.coef = exp, t.auto = F, p.auto = F, 
+          type = "html")
+
+
+```
+
+
+## 7D: homens incumbentes {.tabset .tabset-fade .tabset-pills}
+
+### Log odds
+
+```{r message=FALSE, warning=FALSE, results='asis'}
+## 7D) Grupo de referência: homens incumbentes
+# Deputado federal ----------------------------
+bd_federal <- bd_federal %>% 
+    mutate(INCUMBENT = relevel(factor(INCUMBENT), "Sim"),
+           WOMAN = relevel(factor(WOMAN), "Não"))
+           
+
+m7d_fed <- glm(MOSTVOTEDCANDIDATES ~ 
+                   PCTCAMPAIGNFUND + 
+                   INCUMBENT + 
+                   WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT +
+                   PCTCAMPAIGNFUND:WOMAN +
+                   INCUMBENT:WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT:WOMAN, 
+          data = bd_federal, 
+          family = "binomial")
+
+# Deputado estadual ----------------------------
+bd_estadual <- bd_estadual %>% 
+    mutate(INCUMBENT = relevel(factor(INCUMBENT), "Sim"),
+           WOMAN = relevel(factor(WOMAN), "Não"))
+           
+
+m7d_est <- glm(MOSTVOTEDCANDIDATES ~ 
+                   PCTCAMPAIGNFUND + 
+                   INCUMBENT + 
+                   WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT +
+                   PCTCAMPAIGNFUND:WOMAN +
+                   INCUMBENT:WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT:WOMAN, 
+          data = bd_estadual, 
+          family = "binomial")
+
+
+stargazer(m7d_est,
+          m7d_fed,
+          title = "Modelo 7d", covariate.labels = rotulos,
+          dep.var.labels = "Sucesso Eleitoral:", dep.var.caption = "",
+          model.numbers = FALSE, report = "vc*",
+          column.labels = c("Estadual", "Federal"),
+          type = "html")
+
+
+```
+
+### Odds Ratio
+
+```{r message=FALSE, warning=FALSE, results='asis'}
+## 7D) Grupo de referência: homens incumbentes
+# Deputado federal ----------------------------
+bd_federal <- bd_federal %>% 
+    mutate(INCUMBENT = relevel(factor(INCUMBENT), "Sim"),
+           WOMAN = relevel(factor(WOMAN), "Não"))
+           
+
+m7d_fed <- glm(MOSTVOTEDCANDIDATES ~ 
+                   PCTCAMPAIGNFUND + 
+                   INCUMBENT + 
+                   WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT +
+                   PCTCAMPAIGNFUND:WOMAN +
+                   INCUMBENT:WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT:WOMAN, 
+          data = bd_federal, 
+          family = "binomial")
+
+# Deputado estadual ----------------------------
+bd_estadual <- bd_estadual %>% 
+    mutate(INCUMBENT = relevel(factor(INCUMBENT), "Sim"),
+           WOMAN = relevel(factor(WOMAN), "Não"))
+           
+
+m7d_est <- glm(MOSTVOTEDCANDIDATES ~ 
+                   PCTCAMPAIGNFUND + 
+                   INCUMBENT + 
+                   WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT +
+                   PCTCAMPAIGNFUND:WOMAN +
+                   INCUMBENT:WOMAN +
+                   PCTCAMPAIGNFUND:INCUMBENT:WOMAN, 
+          data = bd_estadual, 
+          family = "binomial")
+
+
+stargazer(m7d_est,
+          m7d_fed,
+          title = "Modelo 7d", covariate.labels = rotulos,
+          dep.var.labels = "Sucesso Eleitoral:", dep.var.caption = "",
+          model.numbers = FALSE, report = "vc*",
+          column.labels = c("Estadual", "Federal"),
+          apply.coef = exp, t.auto = F, p.auto = F, 
+          type = "html")
+
+
+```
+
+# Extensões
+A replicação foi um sucesso! Vamos tentar brincar um pouco mais com os dados.
+
+A interpretação de coeficientes logit é mais complicada do que em modelos linerares. Não é tão simples, por exemplo, capturar o efeito total de um modelo com interações simplesmente somando os coeficientes. A parte de interações em logit ainda é uma linha de pesquisa aberta, e bem menos estabelecida do que seu equivalente em modelos lineares.
+
+
+## Valores preditos
+Uma das aplicações mais interessantes de modelos logit é a geração de probabilidades preditas, para cada observação, de que a VD seja igual a 1. No nosso caso, podemos calcular, para cada candidato, sua probabilidade (condicional ao modelo) de ser eleito.
+
+Para ilustrar isso, vamos nos concentrar no modelo 7D para deputados federais.
+
+```{r message=FALSE, warning=FALSE}
+bd_federal$Pr_M7D_Fed <- predict(m7d_fed,
+                                 newdata = bd_federal,
+                                 type = "response") # probs em vez de log odds
+
+bd_federal
+
+```
+
+Agora que temos uma variável de probabilidades preditas, podemos criar indicadores a partir delas. Por exemplo, podemos criar previsões de quem tem chance de ser eleito com base no nosso modelo.
+
+*Nota: como os autores não criaram esse modelo com a ideia de fazer previsões, os resultados não serão necessariamente bons. A ideia aqui é mostrar como funcionaria uma mecânica simples de classificação, e não dar um exemplo de bom modelo preditivo.*
+
+```{r message=FALSE, warning=FALSE, dev='CairoPNG'}
+bd_federal <- bd_federal %>% 
+    mutate(PREVISAO = case_when(Pr_M7D_Fed < .5                     ~ "Baixa probabilidade",
+                                Pr_M7D_Fed >= .5 & Pr_M7D_Fed <= .8 ~ "Alguma probabilidade",
+                                Pr_M7D_Fed > .8                     ~ "Alta probabilidade"))
+
+# batendo a previsão com a VD
+table(bd_federal$MOSTVOTEDCANDIDATES, bd_federal$PREVISAO) %>% 
+  mosaicplot(shade = TRUE,
+             main = "Valores previstos vs. observados",
+             xlab = "Teve sucesso?",
+             ylab = "Previsto",
+             off = 5,
+             las = 1)
+
+```
+
+## Efeitos marginais
+Como efeitos de interação não são lineares, nem sempre faz sentido pensar no seu efeito médio, como fizemos na interpretação dos coeficientes aditivos na OLS. A estimação de efeitos marginais nos permite calcular quanto uma variável afeta a outra condicional a diferentes valores. Parece abstrato, mas a ilustração com as hipóteses dos autores pode ajudar.
+
+### H1: efeito marginal do financiamento de campanha sobre o sucesso eleitoral
+Os dados dos autores mostram um efeito positivo do financiamento de campanha dobre as chances de sucesso, mas com o gráfico marginal vemos que esse efeito é limitado depois de mais ou menos 5% dos recursos do distrito. Cada ponto percentual depois disso agrega menos efeito
+
+```{r message=FALSE, warning=FALSE, dev='CairoPNG'}
+library(margins) # pacote para efeitos marginais
+
+cplot(m7d_fed,
+      what = "effect",
+      x = "PCTCAMPAIGNFUND",
+      ylab = "Efeito Marginal",
+      xlab = "Financiamento da Campanha")
+
+```
+
+### H2: efeito marginal de ser challenger condicional ao financiamento
+Wow!
+
+```{r message=FALSE, warning=FALSE, dev='CairoPNG'}
+summary(margins(m7d_fed, 
+        variables = "INCUMBENT",
+        at = list(PCTCAMPAIGNFUND = c(1:30)))) %>% 
+  ggplot(aes(PCTCAMPAIGNFUND, AME)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = .2) +
+  theme_classic() +
+  labs(y = "Efeito marginal de ser CHALLENGER sobre p(sucesso)",
+       x = "Financiamento de campanha")
+
+```
+
+### H3: efeito marginal de ser mulher condicional ao financiamento
+
+```{r message=FALSE, warning=FALSE, dev='CairoPNG'}
+summary(margins(m7d_fed, 
+        variables = "WOMAN",
+        at = list(PCTCAMPAIGNFUND = c(1:30)))) %>% 
+  ggplot(aes(PCTCAMPAIGNFUND, AME)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = .2) +
+  theme_classic() +
+  labs(y = "Efeito marginal de ser MULHER sobre p(sucesso)",
+       x = "Financiamento de campanha")
+
+```
+
+
+
+

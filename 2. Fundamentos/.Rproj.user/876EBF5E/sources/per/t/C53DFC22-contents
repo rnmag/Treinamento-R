@@ -1,0 +1,56 @@
+library(lme4)
+library(dplyr)
+library(here)
+
+here() # dir de trabalho
+load("data/cses2.rdata")
+
+# Variáveis de interesse ----
+# B1006_NAM>>> ID COMPONENT - POLITY NAME
+# B3045    >>> LEFT-RIGHT - SELF
+# B2020    >>> HOUSEHOLD INCOME
+
+# Lista de países no estudo
+paises <- c("Australia",
+            "Bulgaria",
+            "Canada",
+            "Czech Republic",
+            "Denmark",
+            "Finland",
+            "Germany",
+            "Hungary",
+            "Iceland",
+            "Ireland",
+            "Israel",
+            "Netherlands",
+            "New Zealand",
+            "Norway",
+            "Poland",
+            "Portugal",
+            "Romania",
+            "Spain",
+            "Sweden",
+            "Switzerland",
+            "Great Britain")
+
+# Preparo do banco ----
+cses2 <- cses2 %>% 
+  filter(B1006_NAM %in% paises) %>% 
+  mutate(B1006_NAM = as.factor(B1006_NAM),
+         B3045 = case_when(B3045 > 10 ~ as.integer(NA),
+                           TRUE ~ B3045),
+         B2020 = case_when(B2020 > 5 ~ as.integer(NA),
+                           TRUE ~ B2020),
+         low_income = as.numeric(B2020 <= 2),
+         high_income = as.numeric(B2020 >= 4))
+
+rm(paises)
+
+# Modelo ----
+m1 <- lmer(B3045 ~ low_income + (1 + low_income | B1006_NAM), data = cses2)
+summary(m1)
+
+# Guardar .csv
+write.csv2(cses2, "data/base_limpa.csv")
+
+

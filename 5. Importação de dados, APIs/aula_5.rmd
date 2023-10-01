@@ -1,0 +1,207 @@
+---
+title: "Aula 5 - Importação de dados (cont.), APIs"
+author: Rafael N. Magalhães
+date: "8 de  março, 2019"
+output: 
+  revealjs::revealjs_presentation:
+    theme: simple
+    highlight: tango
+    transition: slide
+    center: true
+    css: stylesheet.css
+    reveal_options:
+      controls: false  # Desativar botões de navegação no slide
+      mouseWheel: true # Passar slides com o mouse
+  beamer_presentation:
+    highlight: tango
+    keep_tex: false # Mudar se quiser ter o arquivo .tex
+    toc: true # Seções definidas como nível 1
+    incremental: false # Sem bullets incrementais. Para ativar específ., usar >-
+    slide_level: 2 # Slides definidos como nível 2
+---
+
+## Programa
+1. Uso da página institucional no Github
+2. Exercício da semana passada
+3. Importação de arquivos `.csv`
+4. Importação de dados do Excel
+5. Uso de APIs
+
+## Esquema do curso
+<center>
+![Esquema do Curso](imagens/data-science.png){width=800px}
+</center>
+
+## Importação de dados
+<center>
+![Importação de dados](imagens/data-science-wrangle.png){width=800px}
+</center>
+
+# Importação de arquivos .csv
+
+## Importando bancos em formato .csv
+O formato mais flexível de distribuição de bases de dados é o `csv`. Trata-se de um arquivo de texto sem estrutura proprietária, podendo, portanto, ser usado em qualquer pacote estatístico.
+
+Duas fontes de dados importantes são o [CIS-USP](http://www.nadd.prp.usp.br/cis/index.aspx) e o [Cesop-Unicamp](https://www.cesop.unicamp.br/por). Ambos disponibilizam diversas bases de dados gratuitas, basta criar um cadastro. Ao longo do curso vamos conhecer outras bases de dados importantes.
+
+Vamos usar um arquivo que baixei do site do CIS: a [avaliação da população sobre o Mensalão](http://www.nadd.prp.usp.br/cis/DetalheBancoDados.aspx?cod=B539&lng=pt-br). Vocês receberam o arquivo `csv` por e-mail. *Baixe-o no seu diretório de trabalho*.
+
+## Importando bancos em formato .csv
+Importaremos o arquivo com o pacote readr
+
+```{r results='hide'}
+# install.packages("readr")
+library(readr)
+```
+
+Como todo arquivo `.csv`, nosso banco de dados é delimitado por caracteres especiais. Note que na função abaixo estamos especificando `;` como o delimitador
+
+```{r message=FALSE, warning=FALSE, results='hide'}
+bd_csv <- read_delim("BD_CIS0539.csv", ";", escape_double = FALSE, trim_ws = TRUE)
+View(bd_csv)
+```
+
+## Importando bancos em formato .csv
+Com pacotes especializados, também podemos importar bases de dados do Excel e de outros pacotes estatísticos, como o SPSS. Veremos como usar esses pacotes nas próximas aulas.
+
+Vocês perceberam que os nomes de algumas variáveis nesse banco de dados indicam o número da pergunta, e não que pergunta foi feita. Você pode consultar o questionário (também enviado por e-mail) para verificar do que se trata a pergunta 2, por exemplo.
+
+Por exemplo, para ver a distribuição de preferências partidárias, podemos usar o comando `table()`
+```{r results='hide'}
+table(bd_csv$PARTIDO)
+```
+
+
+Nas próximas aulas veremos como limpar essa base de dados (tratamento de NAs, por exemplo), e como tratar de bases de dados mais bagunçadas.
+
+
+# Importação de arquivos em Excel
+
+## Importação de arquivos em Excel
+A lógica é muito parecida com a importação de arquivos `.csv`. Apenas usaremos um pacote diferente:
+
+```{r message=FALSE, warning=FALSE, results='hide'}
+# install.packages("readxl")
+library(readxl)
+bd_excel <- read_excel("BD_CIS0539.xlsx")
+View(bd_excel)
+```
+
+É boa prática usar, na medida do possível, formatos de dados como o `.csv`, que possam ser lidos por um simples editor de texto. 
+
+No entanto, ainda é muito comum que dados sejam divulgados em formatos como o Excel, SPSS (nas ciências sociais) ou Stata (na economia)
+
+# APIs
+
+## APIs
+A sigla API significa *Application Programming Interface*. Trata-se de uma interface de comunicação entre dois sistemas, com protocolos para facilitar a troca de informação de um ambiente para outro.
+
+Do ponto de vista do nosso curso, o uso de APIs é importante porque facilita muito a obtenção dos dados. Com os pacotes corretos, podemos utilizar bases de dados sem precisar importá-los. 
+
+Isso pode parecer trivial agora, mas lembrem-se que, por enquanto, só mexemos com bases que já estão no formato **tidy**. Com bases mais complexas, as APIs podem nos economizar bastante tempo que seria utilizado com checagem dos dados e limpeza.
+
+## Pacotes no R
+Ao longo do curso vamos mexer com diversos pacotes relevantes para políticas públicas. 
+
+Alguns dos mais importantes são:
+
+- [congressbr](https://cran.r-project.org/web/packages/congressbr/index.html): Votações nominais e estimação da probabilidade de um PL passar
+- [electionsbr](https://cran.r-project.org/web/packages/electionsBR/index.html): Dados eleitorais gerais
+- [cepespR](https://github.com/Cepesp-Fgv/cepesp-r): Dados eleitorais e socioeconômicos
+- [BETS - Brazilian Economics Time Series](https://cran.r-project.org/web/packages/BETS/): Dados econômicos do IBGE, Banco Central e outras fontes
+
+Há APIs para outros tipos de dados relevantes para o nosso trabalho. O pacote [twitteR](https://cran.r-project.org/web/packages/twitteR/index.html) permite coletar dados de engajamento na rede social e produzir análises de texto, sentimento, redes, etc. Vamos mexer bastante nele mais para a frente!
+
+## Dados do Congresso
+Por hoje vamos ter apenas um aperitivo de como funcionam esses pacotes. Assim que terminarmos os fundamentos, vamos voltar a eles para fazer análises aplicadas.
+
+Vamos usar os comandos já conhecidos para instalar e carregar o pacote `congressbr`. Em seguida, vamos olhar os dados disponíveis para a votação do [PL 1992/2007](https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao=366851).
+
+```{r message=FALSE, warning=FALSE, results='hide'}
+# install.packages("congressbr")
+library(congressbr)
+
+# Informações sobre a votação 1992/2007
+pl_1992 <- cham_votes(type = "PL", number = "1992", year = "2007")
+
+# Todas as votações do ano passado
+leis_2018 <- cham_plenary_bills(year = 2018)
+```
+
+## Dados do Congresso
+Por fim, uma análise básica só para vocês verem como funciona. 
+
+Ainda não vimos muitos desses comandos, mas chegaremos lá em breve.
+
+```{r results='hide'}
+# install.packages("ggplot2")
+library(ggplot2)
+
+party_orientation <- cham_votes(type = "PL", number = "1992", year = "2007")
+
+# Selecionar apenas a linha que interessa e transpor os dados
+party_orientation <- as.data.frame(t(party_orientation[1, c(7, 10:22)])) 
+names(party_orientation)[1] <- "orientation"
+
+```
+
+## Dados do Congresso
+
+```{r echo=TRUE, fig.height = 4, fig.width = 4, fig.align="center"}
+ggplot(party_orientation, aes(x = orientation)) +
+  geom_bar(aes(fill = orientation), colour = "white") +
+  theme_classic() + 
+  scale_fill_hue(l = 40) + 
+  ggtitle("Party Orientation - PL 1992/2007") +
+  labs(x = "Orientation", y = "Count") + 
+  theme(legend.position = "none")
+```
+
+## Dados do Senado
+Agora, vamos explorar mais algumas funções do pacote, tomando como base o Senado:
+
+```{r message=FALSE, warning=FALSE, results='hide'}
+# Todas as votações nominais
+data("sen_nominal_votes")
+View(sen_nominal_votes)
+
+# Informações sobre o voto de cada senador
+votos_senado <- sen_votes(date = "20160908")
+
+# Informações sobre a sessão
+sessao_senado <- sen_plenary_result(date = "20160303")
+
+# Informações osbre os senadores
+senadores <- sen_senator_list()
+```
+
+## Dados do Senado
+```{r message=FALSE, warning=FALSE, results='hide'}
+# Dados sobre as comissões
+data("commissions")
+View(commissions)
+
+# Componentes (atentar para atualização dos dados)
+ccj <- sen_commissions_senators(code = "CCJ")
+
+# Medidas provisórias em tramitação em 2001
+medidas_provisorias <- sen_bills_passing(year = "2001", type = "MPV")
+
+# Agenda do Senado
+agenda <- sen_agenda(initial_date = "20161105", end_date = "20161125")
+```
+
+
+## Dados do Senado
+```{r message=FALSE, warning=FALSE, fig.height = 3.5, fig.width = 7, fig.align="center"}
+# Distribuição dos senadores por sexo
+senadores <- sen_senator_list()
+
+ggplot(senadores, aes(x = gender)) +
+  geom_bar(aes(fill = gender), colour = "white") +
+  theme_classic() +
+  theme(legend.position = "none") +
+  scale_fill_manual(values = c("#45C74A", "navy")) +
+  coord_flip()    
+```
+

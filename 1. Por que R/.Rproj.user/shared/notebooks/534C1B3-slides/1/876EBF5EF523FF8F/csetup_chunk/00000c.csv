@@ -1,0 +1,3 @@
+"0","db <- data.frame(matrix(unlist(poststrat), nrow=13770, byrow=T))
+"
+"2","data length [13875] is not a sub-multiple or multiple of the number of rows [13770]"

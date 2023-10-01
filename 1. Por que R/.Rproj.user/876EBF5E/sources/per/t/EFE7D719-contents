@@ -1,0 +1,156 @@
+---
+title: "Coeficientes Aleatórios em Modelos Hierárquicos: Estimação e Interpretação"
+author: Rafael N. Magalhães
+date: "`r format(Sys.time(), '%d de %B, %Y')`"
+output: 
+  revealjs::revealjs_presentation:
+    theme: simple
+    highlight: tango
+    transition: slide
+    center: true
+    css: stylesheet.css
+    reveal_options:
+      controls: false  # Desativar botões de navegação no slide
+      mouseWheel: true # Passar slides com o mouse
+  beamer_presentation:
+    highlight: tango
+    keep_tex: false # Mudar se quiser ter o arquivo .tex
+    toc: true # Seções definidas como nível 1
+    incremental: false # Sem bullets incrementais. Para ativar específ., usar >-
+    slide_level: 2 # Slides definidos como nível 2
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+library(dplyr)
+library(lme4)
+library(arm)
+library(here)
+library(coefplot)
+library(broom)
+library(dotwhisker)
+library(sjPlot)
+
+here() # dir de trabalho
+coefplot <- coefplot::coefplot
+
+source("giger_replication.R")
+```
+# Motivação
+
+## Motivação 
+- Diversos fenômenos nas ciências sociais têm estrutura hierárquica
+    - Políticas públicas aplicadas no nível municipal
+    - Efeitos observados no nível individual
+- Estrutura hierárquica comunica a ideia de que observações não são necessariamente independentes
+- Erros agregados por grupos
+
+
+## Relembrando a apresentação do Jonathan
+
+- Importante suposição de OLS: observações são independentes
+- Em realidade eles não são
+    - Amostragem agrupada
+    - Tratamento em nível de grupo
+    - Agrupamento natural de unidades
+- As consequências: 
+    - N efetivo menor
+    - SEs subestimado
+    - Risco de viés
+
+
+## Respostas possíveis
+- **Clustered Standard Errors:** Ajustar os standard errors para a correlação dentro dos grupos
+- **Fixed Effects:** Tira toda a variação entre grupos
+- **Multi-Level Model:** *Modelar* a variação entre groupos
+
+# Modelos
+
+## Respostas possíveis
+
+Para indivíduos i em grupos j
+
+Estratégia      |  Fórmula
+----------------|-----------------------------
+Nada            | $Y_{i} = \alpha + \beta X_{i} + \epsilon_{i}$
+Clustered Standard Errors  | $Y_{i} = \alpha + \beta X_{i} + \epsilon_{ij}$
+Fixed Effects   | $Y_i = \alpha + \beta X_i + \gamma_j + \epsilon_{i}$
+Multi-Level Model  | $Y_{i} = \alpha + \beta X_{i} + \rho_j + \epsilon_i$, <br> $\rho_j \sim N(0,\sigma^2_J)$
+
+## Respostas possíveis
+
+- O MLM está usando 'random effects' em vez de fixed effects
+    - Mixed Effects
+    - Multi-level Model
+    - Hierarchical
+- A variação entre grupos é modelada como uma distribuição normal
+    - Pode ser grupos de primeiro e segundo nível
+    
+## Desagregando variação
+
+- Em MLMs, temos ao menos dois fontes de variação aleatória: $\epsilon_i$ e $\rho_j$
+- Quanto da variação vem do nível dos grupos?
+
+\% Variação entre grupos: $\frac{\sigma^2_J}{\sigma^2_J + \sigma^2_I}$  
+\% Variação dentro de grupos: $\frac{\sigma^2_I}{\sigma^2_J + \sigma^2_I}$
+
+
+## Erro OLS {#figure}
+![](slides-figure/slide9.png){ width=80% }
+
+## Erro Hierárquico
+![](slides-figure/slide11.png){ width=80% }
+
+## Erro Hierárquico
+![](slides-figure/slide12.png){ width=80% }
+
+## Decomposição da variância 
+![](slides-figure/Slide15-300x225.png){ width=80% }
+
+## Interceptos aleatórios 
+![](slides-figure/Slide16-300x225.png){ width=80% }
+
+## Interceptos e efeitos aleatórios 
+![](slides-figure/Slide19-300x225.png){ width=80% }
+
+# Replicação
+
+## Giger et al. 2012
+- Objeto: subrepresentação de preferências dos eleitores mais pobres em países desenvolvidos
+- VI: *dummy* de baixa renda (pertencer aos dois quintis inferiores em cada país)
+- VDs: Preferência ideológica individual, congruência com partido mais próximo e congruência com partido no governo
+- 21 países com sistemas não presidenciais
+- Modelo hierárquico visa capturar o efeito da renda individual levando em consideração que os países têm níveis diferentes de riqueza
+- Para maior clareza, discussão é concentrada no modelo 1
+    - Resultados não são exatamente iguais, mas são próximos
+
+## Tabela principal - Giger et al
+![](slides-figure/table-1.png){ width=80% }
+
+## Coeficientes por país - Giger et al
+![](slides-figure/figure-1.png){ width=80% }
+
+## Replicação Giger et al
+
+![](slides-figure/m1-replic.png){ width=60% }
+
+## Replicação Giger et al
+
+```{r echo=FALSE}
+m1_df <- tibble(term = row.names(coef(m1)[["B1006_NAM"]]),
+                   estimate = coef(m1)[["B1006_NAM"]][["low_income"]],
+                   std.error = as.numeric(se.coef(m1)[["B1006_NAM"]][,2])) %>% 
+  arrange(desc(estimate))
+  
+
+dwplot(m1_df)
+```
+
+
+## Replicação Giger et al
+
+```{r echo=FALSE}
+m2 <- lm(B3045 ~ low_income:B1006_NAM, data = cses2)
+m2_df <- tidy(m2)
+
+coefplot(m2, intercept = FALSE, sort = "magnitude", color = "black")
+```
